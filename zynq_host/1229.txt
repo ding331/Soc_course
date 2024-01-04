@@ -1,0 +1,454 @@
+now you are a VHDL coder, make a testbench(VHDL) for below VHDL module;
+"""
+entity top is
+port(
+    reset          : in std_logic;
+    video_clk            :in std_logic;
+--------set---------------------------------
+    mode_sw        : in std_logic;	--888, 8
+    star_up_sw     : in std_logic;
+------------video in i2c---------------------------------
+    video_gray_out : in std_logic_vector(7 downto 0);	--AXIS
+	delay_video_data : in std_logic_vector(7 downto 0);	--AXIS
+------------vga---------------------------------
+    rout           : out std_logic_vector(3 downto 0); --
+    gout           : out std_logic_vector(3 downto 0); --
+    bout           : out std_logic_vector(3 downto 0); --
+	o_video_minus  : out STD_LOGIC_VECTOR(7 DOWNTO 0);
+-----------------------------------------------------------------------------
+	o_vga_hs_cnt	:out std_logic_vector(9 downto 0);	--integer range 0 to 720;
+	o_vga_vs_cnt	:out std_logic_vector(9 downto 0);	--integer range 0 to 480;	--
+	o_buf_data_state  : out std_logic_vector(1 downto 0);
+	-- SB_CRB_data_8_buf: : out std_logic_vector(7 downto 0);
+	-- ero_data      : out std_logic;
+	-- ero_data1     : out std_logic;
+	-- dila_data 	  : out std_logic ;
+	o_match_data	:out std_logic_vector(39 downto 0);
+    signal_test    : out std_logic
+);
+end top;
+"""
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use IEEE.NUMERIC_STD.ALL;
+use IEEE.std_logic_textio.ALL;
+library STD;
+use STD.textio.ALL;
+
+entity tb_top is
+end tb_top;
+
+architecture testbench of tb_top is
+
+    -- Component declaration for the unit under test (UUT)
+    component top
+        port(
+            reset          : in std_logic;
+            video_clk      : in std_logic;
+            mode_sw        : in std_logic;
+            star_up_sw     : in std_logic;
+            video_gray_out : in std_logic_vector(7 downto 0);
+            delay_video_data : in std_logic_vector(7 downto 0);
+            rout           : out std_logic_vector(3 downto 0);
+            gout           : out std_logic_vector(3 downto 0);
+            bout           : out std_logic_vector(3 downto 0);
+            o_video_minus  : out std_logic_vector(7 downto 0);
+            o_vga_hs_cnt   : out std_logic_vector(9 downto 0);
+            o_vga_vs_cnt   : out std_logic_vector(9 downto 0);
+            o_buf_data_state : out std_logic_vector(1 downto 0);
+            o_match_data   : out std_logic_vector(39 downto 0);
+            signal_test    : out std_logic
+        );
+    end component;
+
+    -- Testbench signals
+    signal clk         : std_logic := '0';
+    signal reset_tb    : std_logic := '0';
+    signal mode_sw_tb  : std_logic := '0';
+    signal star_up_sw_tb : std_logic := '0';
+    signal video_gray_out_tb : std_logic_vector(7 downto 0) := (others => '0');
+    signal delay_video_data_tb : std_logic_vector(7 downto 0) := (others => '0');
+    signal rout_tb     : std_logic_vector(3 downto 0);
+    signal gout_tb     : std_logic_vector(3 downto 0);
+    signal bout_tb     : std_logic_vector(3 downto 0);
+    signal o_video_minus_tb : std_logic_vector(7 downto 0);
+    signal o_vga_hs_cnt_tb : std_logic_vector(9 downto 0);
+    signal o_vga_vs_cnt_tb : std_logic_vector(9 downto 0);
+    signal o_buf_data_state_tb : std_logic_vector(1 downto 0);
+    signal o_match_data_tb : std_logic_vector(39 downto 0);
+    signal signal_test_tb : std_logic;
+
+begin
+
+    -- Instantiate the unit under test (UUT)
+    UUT : top
+        port map(
+            reset          => reset_tb,
+            video_clk      => clk,
+            mode_sw        => mode_sw_tb,
+            star_up_sw     => star_up_sw_tb,
+            video_gray_out => video_gray_out_tb,
+            delay_video_data => delay_video_data_tb,
+            rout           => rout_tb,
+            gout           => gout_tb,
+            bout           => bout_tb,
+            o_video_minus  => o_video_minus_tb,
+            o_vga_hs_cnt   => o_vga_hs_cnt_tb,
+            o_vga_vs_cnt   => o_vga_vs_cnt_tb,
+            o_buf_data_state => o_buf_data_state_tb,
+            o_match_data   => o_match_data_tb,
+            signal_test    => signal_test_tb
+        );
+
+    -- Clock process
+    process
+    begin
+        while now < 1000 ns loop  -- Simulate for 1000 ns
+            clk <= '0';
+            wait for 5 ns;
+            clk <= '1';
+            wait for 5 ns;
+        end loop;
+        wait;
+    end process;
+
+    -- Stimulus process
+    process
+    begin
+        reset_tb <= '1';  -- Activate reset
+        wait for 10 ns;
+        reset_tb <= '0';  -- Deactivate reset
+
+        -- Apply your test stimuli here
+
+        wait;
+    end process;
+    cnt_process:process(i_clk,i_rst)
+begin
+    if i_rst = '1' then 
+        cnt <= 0;
+    elsif rising_edge(i_clk)then
+        if cnt < img_width*img_height then
+            cnt <= cnt +1;
+        end if;
+    end if;
+end process;
+  -- Data source for gradient
+  gradient_input: process
+    file input_file : text;
+    variable l: LINE;
+    variable read_data: integer;
+  begin
+    file_open(input_file, "C:\Users\abc78\lab\project\FPGA_Canny\Canny.srcs\input_data.txt", read_mode);
+      while not endfile(input_file) loop
+          readline(input_file, l);
+          if endfile(input_file) then
+            exit;
+          end if;
+          wait for clk_period/2;
+          read(l, read_data);
+          i_img_data <= std_logic_vector(to_unsigned(read_data,8));
+          wait for clk_period/2;
+      end loop;
+      file_close(input_file);
+  end process;
+--output_data
+output_process:process
+    file output_file : text;
+    variable l : line;
+    variable write_data : integer;
+    variable data : integer;
+begin
+    file_open(output_file, "C:\Users\abc78\lab\project\FPGA_Canny\Canny.srcs\output_data.txt", write_mode);
+    while True loop
+        if cnt = img_width*img_height then
+            file_close(output_file);
+        else
+            wait for clk_period/2;
+            if o_img_data = '1' then
+                            data := 255;
+            else
+                            data := 0;
+            end if;
+            write(output_file, integer'image(data));
+            write(output_file, ",");
+            writeline(output_file, l);
+            wait for clk_period/2;        
+        end if;
+    end loop;    
+end process;
+
+
+end testbench;
+
+
+
+then divide (u32)RxBufferPtr[] to {31~28 bits, 27~34 bits, 23~20 bits, 19~0 bits}, {31!}
+
+now you are Soc developer, modify below code: data convert (u8)RxBufferPtr[720*4] to (u32)RxBufferPtr[720], 
+then use for loop to 
+for(int j 0 to 719) loop :      //per 32 bits ptr address
+    for(int i 4 to 721*3) loop :    //per 8 bits ptr address
+        when i mod 3 = 0 then lwip_buf[i] = (u32)RxBufferPtr[j](31~28 bits)|(4 bits 0);
+        when i mod 3 = 1 then lwip_buf[i] = (u32)RxBufferPtr[j](27~34 bits)|(4 bits 0);
+        when i mod 3 = 2 then lwip_buf[i] = (u32)RxBufferPtr[j](23~20 bits)|(4 bits 0);
+        if ((u32)RxBufferPtr[j](19~0 bits) != 20 bits 0)then
+            lwip_buf[cnt+720] = "000000000000"|(u32)RxBufferPtr[j](19~0 bits);
+            cnt += 1;
+ check and note on your own;
+"""
+u8 cnt = 0;
+u32 row = 0;
+u8 * RxBufferPtr;
+u8 * lwip_buf;
+XAxiDma_SimpleTransfer(&AxiDma, (UINTPTR)RxBufferPtr,
+                MAX_PKT_LEN, XAXIDMA_DEVICE_TO_DMA);
+
+        //rearrange (u8) RxBufferPtr[] and modify to (u32)* lwip_buf
+
+		/* Send results back from time to time */
+		if (SendResults == 1){
+			SendResults = 0;
+			psnd = pbuf_alloc(PBUF_TRANSPORT, (720+4+50)*sizeof(u32), PBUF_REF);
+            memcpy(lwip_buf, &row, 4);
+            
+
+			psnd->payload = &lwip_buf;
+        }
+
+row += 1;
+"""
+#include <stdint.h> // Include necessary header for uint types
+
+// Assuming these variables are declared somewhere in your code
+uint8_t cnt = 0;
+uint32_t row = 0;
+uint8_t *RxBufferPtr;
+uint32_t *lwip_buf;
+
+// ... (other code)
+
+// Perform the data conversion from u8 RxBufferPtr[720*4] to u32 RxBufferPtr[720]
+// You'll need to adjust the size of lwip_buf accordingly, assuming 720 is the intended size
+lwip_buf = (uint32_t *)RxBufferPtr; // Casting RxBufferPtr to uint32_t pointer
+
+// Perform the required manipulation using nested loops
+for (int j = 0; j < 720; j++) { // Loop over each 32-bit pointer address
+    for (int i = 4; i < 721 * 3; i += 3) { // Loop over each 8-bit pointer address
+        uint32_t tempValue = 0;
+
+        if (i % 3 == 0) {
+            tempValue = (RxBufferPtr[j] & 0xF0000000) | 0x00000000; // Extracting bits 31~28 and appending 4 zeros
+        } else if (i % 3 == 1) {
+            tempValue = (RxBufferPtr[j] & 0x0FE00000) | 0x00000000; // Extracting bits 27~20 and appending 4 zeros
+        } else if (i % 3 == 2) {
+            tempValue = (RxBufferPtr[j] & 0x001E0000) | 0x00000000; // Extracting bits 23~20 and appending 4 zeros
+        }
+
+        if ((RxBufferPtr[j] & 0x0001FFFF) != 0x00000000) { // Checking bits 19~0 for non-zero value
+            lwip_buf[cnt + 720] = 0x00000000 | (RxBufferPtr[j] & 0x0001FFFF); // Appending 20 non-zero bits
+            cnt += 1;
+        }
+
+        // Store the manipulated value in lwip_buf at index i
+        lwip_buf[i] = tempValue;
+    }
+}
+
+// ... (other code)
+
+// Assuming this is part of the code for sending results
+if (SendResults == 1) {
+    SendResults = 0;
+    psnd = pbuf_alloc(PBUF_TRANSPORT, (720 + 4 + 50) * sizeof(uint32_t), PBUF_REF);
+    memcpy(&lwip_buf, &row, 4);
+    psnd->payload = &lwip_buf;
+}
+
+row += 1;
+------------------
+1- you guess the value of lwip_buf[0] if my RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000, RxBufferPtr[1] = 32'b1111_1111_1111_0000000000000000000000000RxBufferPtr[1] = 32'b1001_1001_1001_0000000000000000000000000;
+2- show your ans with binary instead of Hex
+3- make a form aslike excel for explaining Memory 
+
+
+Sure, I can help with that.
+
+1. **Guessing lwip_buf[0] value from RxBufferPtr values**:
+
+   For `RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000`:
+
+   The expected value of `lwip_buf[0]` after the manipulation would be:
+   - Bits 31~28 of `RxBufferPtr[0]`: `1111`
+   - Appending 4 zeros: `0000`
+
+   So, `lwip_buf[0] = 32'b1111_0000_0000_0000_0000_0000_0000_0000`.
+
+   For `RxBufferPtr[1] = 32'b1111_1111_1111_0000000000000000000000000RxBufferPtr[1] = 32'b1001_1001_1001_0000000000000000000000000`:
+
+   This doesn't seem correctly formatted, as it appears to be a repetition of the first value followed by another value attached to it. Assuming the second part is supposed to be separate, let's look at the individual values:
+
+   - For the first part (`RxBufferPtr[1] = 32'b1111_1111_1111_0000000000000000000000000`), `lwip_buf[1]` will be:
+     - Bits 31~28 of `RxBufferPtr[1]`: `1111`
+     - Appending 4 zeros: `0000`
+
+     So, `lwip_buf[1] = 32'b1111_0000_0000_0000_0000_0000_0000_0000`.
+
+   - For the second part (`RxBufferPtr[1] = 32'b1001_1001_1001_0000000000000000000000000`), it's not clear what the expected manipulation is supposed to be. If it follows the same pattern as before, it should involve bits 27~20, but there's an issue with the formatting here.
+
+2. **Showing answers in binary**:
+
+   - For `lwip_buf[0]`:
+     - From `RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000`, `lwip_buf[0] = 32'b1111_0000_0000_0000_0000_0000_0000_0000`.
+     - From `RxBufferPtr[1] = 32'b1111_1111_1111_0000000000000000000000000`, `lwip_buf[1] = 32'b1111_0000_0000_0000_0000_0000_0000_0000`.
+
+3. **Excel form for explaining Memory**:
+
+   I can't directly create an Excel file here, but I can guide you on how to represent memory in Excel:
+
+   - Create a table with columns representing memory addresses and their respective values.
+   - Label the columns appropriately: Address, Value (in binary), Value (in hex), etc.
+   - Populate the rows with memory addresses and their corresponding values in binary or hex.
+   - You can format the cells to display binary or hexadecimal values by using custom cell formatting in Excel.
+
+   If you need specific guidance or an example table, please let me know the memory addresses you'd like to represent, and I can assist further.
+
+
+
+Let's break down the values for `lwip_buf[0]` based on the given `RxBufferPtr[0]` and `RxBufferPtr[1]` in binary:
+
+1. `RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000`
+2. `RxBufferPtr[1] = 32'b1001_1001_1001_0000000000000000000000000`
+
+To manipulate these values and derive `lwip_buf[0]`, let's apply the logic described earlier:
+
+For `lwip_buf[0]`:
+- `RxBufferPtr[0]` bits 31~28 = `1111`
+- `RxBufferPtr[0]` bits 27~20 = `0000`
+- `RxBufferPtr[0]` bits 23~20 = `0000`
+
+Therefore, `lwip_buf[0]` would be `32'b1111_0000_0000_0000_0000_0000_0000_0000`.
+
+Explanation in memory layout:
+
+```
+lwip_buf[0] = 1111 0000 0000 0000 0000 0000 0000 0000
+```
+
+This assumes the data manipulation described in the previous code snippet is applied correctly.
+
+Certainly! Let's break down the conversion and data arrangement as per the provided logic.
+
+Given:
+- RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000
+- RxBufferPtr[1] = 32'b1001_1001_1001_0000000000000000000000000
+
+Based on the provided code logic:
+
+```plaintext
+lwip_buf[0] = (RxBufferPtr[0] & 0xF0000000) >> 4 = (1111_1111_1111_0000000000000000000000000 & 1111_0000_0000_0000_0000_0000_0000_0000) >> 4 = 1111
+```
+
+Let's convert the decimal value of 15 to binary:
+
+- lwip_buf[0] = 15 in binary = 4'b1111
+
+This is the value that would be stored in `lwip_buf[0]` based on the given `RxBufferPtr[0]`.
+
+If you need a confirmation for multiple indices or further calculations, feel free to ask!
+
+
+
+Sure, let's break down the given `RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000`:
+
+Applying the conversion logic:
+
+- For `i = 4`, the value of `lwip_buf[i]` will contain bits 31~28 of `RxBufferPtr[0]`, which is `1111` in binary.
+- For `i = 5`, the value of `lwip_buf[i]` will contain bits 27~24 of `RxBufferPtr[0]`, which is `1111` in binary.
+- For `i = 6`, the value of `lwip_buf[i]` will contain bits 23~20 of `RxBufferPtr[0]`, which is `1111` in binary.
+- As `(RxBufferPtr[0] & 0x000FFFFF)` is not equal to `0`, `lwip_buf[cnt + 720]` will contain the last 20 bits of `RxBufferPtr[0]`, which is `0000_0000_0000_0000_00000` in binary.
+
+So, if `RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000`, then `lwip_buf[0]` would contain bits `1111_1111_1111` in binary.
+
+If we represent this in binary, `lwip_buf[0]` would be `32'b0000_0000_0000_0000_0000_0000_1111_1111`.
+
+Therefore, `lwip_buf[0]` in binary, based on the given `RxBufferPtr[0]`, would be `0000_0000_0000_0000_0000_0000_1111_1111`.
+
+
+
+Let's break down the conversion process described earlier:
+
+Given RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000:
+
+1. RxBufferPtr[0] is a 32-bit value represented in binary.
+2. The conversion involves breaking this 32-bit value into 4 8-bit segments to be stored in lwip_buf.
+3. The initial value of lwip_buf[0] would be the first 8 bits of RxBufferPtr[0], after a bit manipulation according to the modulus.
+
+Let's calculate lwip_buf[0] based on the provided RxBufferPtr[0]:
+
+- RxBufferPtr[0] = 32'b1111_1111_1111_0000000000000000000000000
+- lwip_buf[0] will take the first 8 bits of RxBufferPtr[0], considering big-endian bit ordering:
+  - lwip_buf[0] = 32'b1111_1111 (the first 8 bits of RxBufferPtr[0])
+
+So, in binary, lwip_buf[0] would be 32'b1111_1111.
+
+
+
+Certainly! If RxBufferPtr[0] is 32'b1111_1111_1111_0000000000000000000000000 in binary, which is 8 bits long, then converting this value into 32 bits to be stored in lwip_buf[0] would involve replicating this 8-bit value across all four bytes of a 32-bit integer. 
+
+So, in binary:
+
+RxBufferPtr[0] (8 bits): 0b10011001
+
+When stored in lwip_buf[0] (32 bits):
+
+lwip_buf[0] (32 bits): 0b10011001_10011001_10011001_10011001
+
+This would mean that lwip_buf[0] would have the binary value 0b10011001 repeated in all 32 bits of the integer.
+
+
+
+u32 row = 0;
+u8 *RxBufferPtr;
+u32 *lwip_buf; // Changed type to u32 pointer for the buffer
+
+XAxiDma_SimpleTransfer(&AxiDma, (UINTPTR)RxBufferPtr,
+                       MAX_PKT_LEN, XAXIDMA_DEVICE_TO_DMA);
+
+if (SendResults == 1) {
+    SendResults = 0;
+    psnd = pbuf_alloc(PBUF_TRANSPORT, (720 + 4 + 50) * sizeof(u32), PBUF_REF);
+
+    // Casting RxBufferPtr to u32 pointer and assigning it to lwip_buf
+    lwip_buf = (u32 *)RxBufferPtr;
+
+    // Loop through each j (0 to 719)
+    for (int j = 0; j < 720; j++) {
+        // Loop through each i (4 to 721*4)
+        for (int i = 4; i < 721 * 4; i++) {
+            // Manipulate lwip_buf based on i mod 4
+            switch (i % 4) {
+                case 0:
+                    lwip_buf[i / 4] = (lwip_buf[j] >> 28) | 0x00000000;
+                    break;
+                case 1:
+                    lwip_buf[i / 4] = (lwip_buf[j] >> 20) | 0x00000000;
+                    break;
+                case 2:
+                    lwip_buf[i / 4] = (lwip_buf[j] >> 12) | 0x00000000;
+                    break;
+                case 3:
+                    lwip_buf[i / 4] = (lwip_buf[j] << 8) | (lwip_buf[j] >> 24);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    // Assigning the modified lwip_buf to psnd payload
+    psnd->payload = lwip_buf;
+}
+
+row += 1;
