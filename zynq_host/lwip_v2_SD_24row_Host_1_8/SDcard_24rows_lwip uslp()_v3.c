@@ -238,7 +238,7 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 	IP4_ADDR(&netmask, 255, 255, 255,  0);//
 	IP4_ADDR(&gw,      192, 168,   1,  1);		//192, 168, 178, 254
 
-	IP4_ADDR(&RemoteAddr,  192, 168,  1, 77);	//**
+	IP4_ADDR(&RemoteAddr,  192, 168,  1, 77);	//**1, 77
 	//IP4_ADDR(&Remotenetmask, 255, 255, 255,  0);
 	//IP4_ADDR(&Remotegw,   192, 168,  1,  1);
 
@@ -419,7 +419,7 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 							row -= 24;
 							file_pointer -= 24*720;
 						}
-						usleep(100000);	//pac lost per 20 time
+						usleep(50000);	//pac lost per 20 time
 						}
 						else
 						{
@@ -431,7 +431,8 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 				file_pointer += 720;
 			}
 			file_pointer = 0;
-	while (page < 5) {
+
+	while (page < 120) {
 		// row = 0;
 			for (row = 0; row < 480; row++) {	//
 				SD_Transfer_read("road720.bin", (u32)(value), 720);
@@ -497,7 +498,7 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 						file_pointer -= 24*720;
 							
 						}
-						usleep(100000);	//pac lost per 20 time
+						usleep(50000);	//pac lost per 20 time
 					}
 					else
 					{
