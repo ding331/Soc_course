@@ -324,7 +324,7 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 	SD_Transfer_read("road720.bin", (u32)(value + imageSize), imageSize);
 	file_pointer += imageSize;
 	//1st back frame
-	while (page < 1) {
+	while (page < 3) {
 		// row = 0;
 			if ((page & 1U) == 0U)//(page & 0x1 = 0)	//if lowest but of u32 page is 0
 			{

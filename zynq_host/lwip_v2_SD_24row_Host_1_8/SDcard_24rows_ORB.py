@@ -10,7 +10,6 @@ IM_CHANNEL = 3
 HEADER_BYTES = 4
 BODY_BYTES = IM_X * 3
 PACKAGESIZE = BODY_BYTES + HEADER_BYTES
-max_page = 1
 
 
 def read_image(page):
@@ -65,6 +64,7 @@ def main():
     pac_index = 0
     lwip_cnt = 0
     last_lwip_cnt = 0
+    max_page = 1
 
     csv_file = open('optical_flow_data.csv', mode='w', newline='')
     csv_writer = csv.writer(csv_file)
@@ -104,55 +104,58 @@ def main():
 
                 if cur_line == IM_Y - 1:
                     cv2.imwrite(f'SD_image_{max_page}.bmp', image_array)
+                    if max_page == 1:
+                        cv2.imwrite(f'optical_flow_output_{max_page}.bmp', image_array)  # 1st
+
+                    # if (max_page+1) % 5 == 0 and max_page > 0:  #per 5 frame
+                    if max_page > 1:  #=2
+                        # for max_page in range(max_max_page-1, max_max_page+1):  #***
+                        # for max_page in range(max_max_page-2, max_max_page+3):
+                        print("max_page :　", max_page, "\n")
+                        
+                        prev_img = read_image(max_page-1)
+                        next_img = read_image(max_page)
+
+                        good_prev, good_next = sparse_optical_flow(prev_img, next_img)
+
+                        optical_flow_img = np.zeros_like(prev_img)
+                        optical_flow_img = draw_optical_flow(optical_flow_img, good_prev, good_next)
+
+                        output_img = cv2.addWeighted(next_img, 1, optical_flow_img, 1, 0)
+
+                        # Print and save optical flow data
+                        for i, (prev, next) in enumerate(zip(good_prev, good_next)):
+                            x_prev, y_prev = prev.ravel().astype(int)
+                            x_next, y_next = next.ravel().astype(int)
+                            print(
+                                f"max_page: {max_page}, X_prev: {x_prev}, Y_prev: {y_prev}, X_next: {x_next}, Y_next: {y_next}")
+                            csv_writer.writerow([max_page, x_prev, y_prev, x_next, y_next])
+
+                        # 若偵測到page上限值mod 10 = 0，再刷新光流畫面、CSV檔案、撥放視頻
+                        cv2.imwrite(f'optical_flow_output_{max_page}.bmp', output_img)  # 另存為每10張的光流畫面
+                        video_output.write(output_img)  # 寫入視頻
+                        # csv_file.close()  # 關閉舊的CSV檔案
+                        # csv_file = open('optical_flow_data.csv', mode='w', newline='')  # 開啟新的CSV檔案
+                        csv_writer = csv.writer(csv_file)
+                        csv_writer.writerow(['max_page', 'X_prev', 'Y_prev', 'X_next', 'Y_next'])
+
+                        prev_img = next_img
+
+                    # if max_page == 60:  # 若保存完視頻大於60張，自動撥放
+                    #     cap = cv2.VideoCapture('optical_flow_output.mp4')
+                    #     while cap.isOpened():
+                    #         ret, frame = cap.read()
+                    #         if not ret:
+                    #             break
+                    #         cv2.imshow('Optical Flow Video', frame)
+                    #         if cv2.waitKey(25) & 0xFF == ord('q'):
+                    #             break
+
+                    #     cap.release()
                     max_page = max_page + 1
-                    # if max_page == 1:
-                    #     prev_img = read_image(max_page)
-
-            if max_page % 10 == 0 and max_page > 0:
-                for page in range(2, max_page):
-                    prev_img = read_image(page - 1)
-                    next_img = read_image(page)
-
-                    good_prev, good_next = sparse_optical_flow(prev_img, next_img)
-
-                    optical_flow_img = np.zeros_like(prev_img)
-                    optical_flow_img = draw_optical_flow(optical_flow_img, good_prev, good_next)
-
-                    output_img = cv2.addWeighted(next_img, 1, optical_flow_img, 1, 0)
-
-                    # Print and save optical flow data
-                    for i, (prev, next) in enumerate(zip(good_prev, good_next)):
-                        x_prev, y_prev = prev.ravel().astype(int)
-                        x_next, y_next = next.ravel().astype(int)
-                        print(
-                            f"Page: {page}, X_prev: {x_prev}, Y_prev: {y_prev}, X_next: {x_next}, Y_next: {y_next}")
-                        csv_writer.writerow([page, x_prev, y_prev, x_next, y_next])
-
-                    # 若偵測到page上限值mod 10 = 0，再刷新光流畫面、CSV檔案、撥放視頻
-                    # cv2.imwrite(f'optical_flow_output_{page}.png', output_img)  # 另存為每10張的光流畫面
-                    video_output.write(output_img)  # 寫入視頻
-                    # csv_file.close()  # 關閉舊的CSV檔案
-                    # csv_file = open('optical_flow_data.csv', mode='w', newline='')  # 開啟新的CSV檔案
-                    csv_writer = csv.writer(csv_file)
-                    csv_writer.writerow(['Page', 'X_prev', 'Y_prev', 'X_next', 'Y_next'])
-
-                    prev_img = next_img
-
-                # if max_page == 60:  # 若保存完視頻大於60張，自動撥放
-                #     cap = cv2.VideoCapture('optical_flow_output.mp4')
-                #     while cap.isOpened():
-                #         ret, frame = cap.read()
-                #         if not ret:
-                #             break
-                #         cv2.imshow('Optical Flow Video', frame)
-                #         if cv2.waitKey(25) & 0xFF == ord('q'):
-                #             break
-
-                #     cap.release()
-                #     cv2.destroyAllWindows()
 
                 # csv_file.close()
-                video_output.release()
+                # video_output.release()
 
         print("total shake :　", lwip_cnt, "\n")
 
