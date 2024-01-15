@@ -12,4 +12,4 @@ unit_test/  以FIFO測DMA、lwip API設定、觀測buffer_ptr分配情況
 
     //1/12
     //RTL/ORB bypass
-    從原ORB_VGA改，多了720~1280的sync'0'，ILA測DMA延遲、原先的VGA_FSM
+    從原ORB_VGA改，加上switch[4]切換各階段輸出，ILA測DMA延遲、原先內部的buf_data_state
