@@ -58,7 +58,9 @@ DEFAULT SET TO 0x01000000
 
 #define MAX_PKT_LEN		720*480*4	//0x20	//8* 4 = 16*2 byte
 //720*480*4
+#define TEST_START_VALUE	0xC
 
+#define NUMBER_OF_TRANSFERS	10
 #define POLL_TIMEOUT_COUNTER    1000000U
 #define lwip_len    2264*24	//4+720*3+100
 #define btnMode 0   //PL switch
@@ -86,10 +88,13 @@ static UINT file_pointer = 0; // Keep track of the file pointer
 u32 SD_Transfer_read(char *FileName, u32 DestinationAddress, UINT ByteLength);
 static unsigned char value[691200];//2*imageSize]; // Adjust the size to match the desired read length
 
+static int row = 0;
+static u32 page = 0;
 XAxiDma AxiDma;
 XAxiDma AxiDma2;
 XScuGic IntcInstance;
 //static void imageProcISR(void *CallBackRef);
+//static u8* lwip_buf;
 
 /* defined by each RAW mode application */
 void print_app_header();
@@ -119,8 +124,33 @@ u16_t    		RemotePort = 7;
 struct ip4_addr  	RemoteAddr;
 struct udp_pcb 		send_pcb;
 
+void
+print_ip(char *msg, struct ip4_addr *ip)
+{
+	print(msg);
+	xil_printf("%d.%d.%d.%d\n\r", ip4_addr1(ip), ip4_addr2(ip),
+			ip4_addr3(ip), ip4_addr4(ip));
+}
+
+void
+print_ip_settings(struct ip4_addr *ip, struct ip4_addr *mask, struct ip4_addr *gw)
+{
+
+	print_ip("Board IP: ", ip);
+	print_ip("Netmask : ", mask);
+	print_ip("Gateway : ", gw);
+}
+
+/* print_app_header: function to print a header at start time */
+void print_app_header()
+{
+	xil_printf("\n\r\n\r------lwIP UDP GetCentroid Application------\n\r");
+	xil_printf("UDP packets sent to port 7 will be processed\n\r");
+}
+
 int main()
 {
+
 	int Status = 0;
 
 	// //Interrupt Controller Configuration
@@ -149,6 +179,7 @@ int main()
 	xil_printf("--- Exiting main() --- \r\n");
 
 	return XST_SUCCESS;
+
 }
 
 #ifndef SDT
@@ -157,16 +188,16 @@ int XAxiDma_SimplePollExample(u16 DeviceId)
 int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 #endif
 {
-	static int row = 0;
-	static int page = 0;
-	static int detect_cnt = 0;
-	static int lwip_cnt = 0;
+	int detect_cnt = 0;
+	int lwip_cnt = 0;
 	XAxiDma_Config *CfgPtr;
 	XAxiDma_Config *CfgPtr2;
 	int Status;
+	int Tries = NUMBER_OF_TRANSFERS;
 	int Index = 0;
 	u8 *TxBufferPtr;
 	u8 *RxBufferPtr;
+	// u8 Value;
 	int TimeOut = POLL_TIMEOUT_COUNTER;
 
 	TxBufferPtr = (u8 *)TX_BUFFER_BASE;
@@ -183,7 +214,8 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 	// lwip_buf_32 = (u32 *)BUFFER_BASE;
 
 	struct ip4_addr ipaddr, netmask, gw /*, Remotenetmask, Remotegw*/;
-	struct pbuf * psnd;
+	struct pbuf * psnd;	
+	psnd = pbuf_alloc(PBUF_TRANSPORT, (lwip_len)*sizeof(u8), PBUF_REF);
 
 	err_t udpsenderr;
 	int status = 0;
@@ -282,64 +314,63 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 
 	/* Disable interrupts, we use polling mode
 	 */
-	// XAxiDma_IntrDisable(&AxiDma, XAXIDMA_IRQ_ALL_MASK,
-	// 		    XAXIDMA_DEVICE_TO_DMA);
-	// XAxiDma_IntrDisable(&AxiDma2, XAXIDMA_IRQ_ALL_MASK,
-	// 		    XAXIDMA_DMA_TO_DEVICE);
+	XAxiDma_IntrDisable(&AxiDma, XAXIDMA_IRQ_ALL_MASK,
+			    XAXIDMA_DEVICE_TO_DMA);
+	XAxiDma_IntrDisable(&AxiDma2, XAXIDMA_IRQ_ALL_MASK,
+			    XAXIDMA_DMA_TO_DEVICE);
 
 	SD_Init();
 
-	//1st front frame
-	SD_Transfer_read("road720.bin", (u32)(value + imageSize), imageSize);
+	SD_Transfer_read("rec_for_test.bin", (u32)(value + imageSize), imageSize);
 	file_pointer += imageSize;
-	// int print_flag = 1;
-	while (page < 200) {
+	//1st back frame
+	int print_flag = 1;
+	while (page < 1) {
 		// row = 0;
-		if ((page & 1U) == 0U)//(page & 0x1 = 0)	//if lowest but of u32 page is 0
-		{
-			SD_Transfer_read("road720.bin", (u32)(value), imageSize);	//current
-			for (int Index = 0; Index < MAX_PKT_LEN/4; Index += 1) {
-				//lit endien
-				TxBufferPtr[Index * 4] = value[Index];	// 現在這張
-				// Assigning 0xFF to the second and third bytes of each u32 value
-				TxBufferPtr[(Index * 4) + 1] = 0; // 0xFF in the second byte
-				TxBufferPtr[(Index * 4) + 2] = 0; // 0xFF in the third byte
-				// Extractin(g 8 bits )from value[Index + 345600]
-				TxBufferPtr[(Index * 4) + 3] = value[Index + 345600];// 345600~2*345600
-				// if (print_flag == 1 && TxBufferPtr[Index * 4] != 0)	//現一張 [7:0] != 0
-				// 	xil_printf("&1st now frame[0] != at %x is %x \r\n", &TxBufferPtr[Index * 4], (u8)TxBufferPtr[Index * 4]);
-				// 	print_flag = 0;
-				// if (TxBufferPtr[(Index * 4) + 3] != 0)	//前一張
-				// 	xil_printf("&1st now frame[0] != at %x is %x \r\n", &TxBufferPtr[(Index * 4) + 3], (u8)TxBufferPtr[Index * 4 + 3]);
-				// 	print_flag = 0;
+			if ((page & 1U) == 0U)//(page & 0x1 = 0)	//if lowest but of u32 page is 0
+			{
+				SD_Transfer_read("rec_for_test.bin", (u32)(value), imageSize);	//current
+				for (int Index = 0; Index < MAX_PKT_LEN/4; Index += 1) {
+					//lit endien
+					TxBufferPtr[Index * 4] = value[Index];// 現在這張
+					// Assigning 0xFF to the second and third bytes of each u32 value
+					TxBufferPtr[(Index * 4) + 1] = 0; // 0xFF in the second byte
+					TxBufferPtr[(Index * 4) + 2] = 0; // 0xFF in the third byte
+					// Extractin(g 8 bits )from value[Index + 345600]
+					TxBufferPtr[(Index * 4) + 3] = value[Index + 345600];// 345600~2*345600
+					// if (print_flag == 1 && TxBufferPtr[Index * 4] != 0)	//現一張 [7:0] != 0
+					// 	xil_printf("&1st now frame[0] != at %x is %x \r\n", &TxBufferPtr[Index * 4], (u8)TxBufferPtr[Index * 4]);
+					// 	print_flag = 0;
+					if (TxBufferPtr[(Index * 4) + 3] != 0)	//前一張
+						xil_printf("&1st now frame[0] != at %x is %x \r\n", &TxBufferPtr[(Index * 4) + 3], (u8)TxBufferPtr[Index * 4 + 3]);
+						print_flag = 0;
+				}
 			}
-		}
-		else
-		{
-			SD_Transfer_read("road720.bin", (u32)(value + imageSize), imageSize);	//current
-			for (int Index = 0; Index < MAX_PKT_LEN/4; Index += 1) {
+			else
+			{
+				SD_Transfer_read("rec_for_test.bin", (u32)(value + imageSize), imageSize);	//current
+				for (int Index = 0; Index < MAX_PKT_LEN/4; Index += 1) {
 
-				TxBufferPtr[Index * 4] = value[Index + 345600];// 現在這張 s_data[7:0]
-				// Assigning 0xFF to the second and third bytes of each u32 value
-				TxBufferPtr[(Index * 4) + 1] = 0; // 0xFF in the second byte
-				TxBufferPtr[(Index * 4) + 2] = 0; // 0xFF in the third byte
-				// Extractin(g 8 bits )from value[Index + 345600]
-				TxBufferPtr[(Index * 4) + 3] = value[Index];// s_data[31:24]
-			// 	if (print_flag == 0 && TxBufferPtr[Index * 4] != 0)	//現一張 [7:0] != 0
-			// 		xil_printf("&2ed now [345600] at %x is %x \r\n", &TxBufferPtr[Index * 4], (u8)TxBufferPtr[Index * 4]);
+					TxBufferPtr[Index * 4] = value[Index + 345600];// & 0xFF; // Extracting 8 bits from value[Index]
+					// Assigning 0xFF to the second and third bytes of each u32 value
+					TxBufferPtr[(Index * 4) + 1] = 0; // 0xFF in the second byte
+					TxBufferPtr[(Index * 4) + 2] = 0; // 0xFF in the third byte
+					// Extractin(g 8 bits )from value[Index + 345600]
+					TxBufferPtr[(Index * 4) + 3] = value[Index];// & 0xFF;
+					if (print_flag == 0 && TxBufferPtr[Index * 4] != 0)	//現一張 [7:0] != 0
+						xil_printf("&2ed now [345600] at %x is %x \r\n", &TxBufferPtr[Index * 4], (u8)TxBufferPtr[Index * 4]);
+				}
 			}
-		}
-		// xil_printf("(u8)frd[0] %x \r\n",(u8)value[0]);
-		// xil_printf("&frd[0] %x \r\n",&value[0]);
-		// xil_printf("&frd[345600] %x \r\n",&value[345600]);
-		// Update the file pointer
-		file_pointer += imageSize;
+			// xil_printf("(u8)frd[0] %x \r\n",(u8)value[0]);
+			// xil_printf("&frd[0] %x \r\n",&value[0]);
+			// xil_printf("&frd[345600] %x \r\n",&value[345600]);
+			// Update the file pointer
+			file_pointer += imageSize;
 	/* Flush the buffers before the DMA transfer, in case the Data Cache
 	 * is enabled
 	 */
 		Xil_DCacheFlushRange((UINTPTR)TxBufferPtr, MAX_PKT_LEN);
 		// Xil_DCacheFlushRange((UINTPTR)RxBufferPtr, MAX_PKT_LEN);
-		Xil_DCacheFlushRange((UINTPTR)RxBufferPtr, MAX_PKT_LEN);
 
 		// for (Index = 0; Index < Tries; Index ++) {
 			XAxiDma_SimpleTransfer(&AxiDma, (UINTPTR)RxBufferPtr,
@@ -347,12 +378,13 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 
 			XAxiDma_SimpleTransfer(&AxiDma2, (UINTPTR) TxBufferPtr,
 							MAX_PKT_LEN, XAXIDMA_DMA_TO_DEVICE);
+		Xil_DCacheFlushRange((UINTPTR)RxBufferPtr, MAX_PKT_LEN);
 
 			/*Wait till tranfer is done or 1usec * 10^6 iterations of timeout occurs*/
 			while (TimeOut) {
 				if (!(XAxiDma_Busy(&AxiDma, XAXIDMA_DEVICE_TO_DMA)) &&
 					!(XAxiDma_Busy(&AxiDma2, XAXIDMA_DMA_TO_DEVICE))) {
-					xil_printf("DMA fine\n");
+
 					break;
 				}
 				TimeOut--;
@@ -360,128 +392,122 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
 			}
 			//tidy
 			// xil_printf("DMA done");
-		RxBufferPtr_32 = (u32 *)RX_BUFFER_BASE;		//isu
-		for (row = 0; row < 480; row++) {   //ini row
-            // RxBufferPtr_32 = (RX_BUFFER_BASE + (u32)(720* row));   //?
-			// xil_printf("&RxBufferPtr_32 sh  %x \r\n", &RxBufferPtr_32);
-			// xil_printf("RxBufferPtr_32 to  %x \r\n", RxBufferPtr_32);
+		// RxBufferPtr_32 = (u32 *)RX_BUFFER_BASE;		//isu
+		// for (row = 0; row < 480; row++) {   //ini row
+        //     // RxBufferPtr_32 = (RX_BUFFER_BASE + (u32)(720* row));   //?
+		// 	// xil_printf("&RxBufferPtr_32 sh  %x \r\n", &RxBufferPtr_32);
+		// 	// xil_printf("RxBufferPtr_32 to  %x \r\n", RxBufferPtr_32);
+	
+		// 	for (int j = 0; j < 720 ; j++) {
+		// 		if (btnMode == 1) {	//ORB ...444					//1 u32 = 1 pixel
+		// 			lwip_buf[2264 * row + 4 + 3 * j] =     (u8)((RxBufferPtr_32[j+720*row] >> 24) & 0xF0); // 31 downto 28 bits with 4 bits 0
+		// 			lwip_buf[2264 * row + 4 + 3 * j + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 20) & 0x0F0); // 27 downto 24 bits with 4 bits 0
+		// 			lwip_buf[2264 * row + 4 + 3 * j + 2] = (u8)((RxBufferPtr_32[j+720*row] >> 16) & 0x00F0); // 23 downto 20 bits with 4 bits 0
+		// 		}
+		// 		else
+		// 		{	//sobel, erosion, vid minus 8bits 
+		// 			lwip_buf[2264 * row + 4 +  3 * j]	  = (u8)((RxBufferPtr_32[j+720*row] >> 24)); // 31 downto 24
+		// 			lwip_buf[2264 * row + 4 +  3 * j + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 24)); // 31 downto 24
+		// 			lwip_buf[2264 * row + 4 +  3 * j + 2] = (u8)((RxBufferPtr_32[j+720*row] >> 24)); // 31 downto 24
+		// 			if (RxBufferPtr_32[j+720*row] != 0)
+		// 				xil_printf("RxBufferPtr_32[] != 0 :  %x \r\n", *RxBufferPtr_32);
+		// 		}
+		// 		//若 RxBufferPtr_32[j] 的低位20bits != 0 ，則串列接在位址...
+		// 		if ((RxBufferPtr_32[j+720*row] << 12 & 0xFFFFF) != 0) {
+		// 			// 提取RxBufferPtr[j*2]的特定位數到lwip_buf[j*5]到lwip_buf[j*5+1]
+		// 			lwip_buf[4+2160 *row + j * 5]     = (u8)((RxBufferPtr_32[j+720*row] >> 12) & 0xFF); // 取最低20bits之後的前8bits
+		// 			lwip_buf[4+2160 *row + j * 5 + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 4) & 0xFF); // 取最低20bits之後的中間8bits
 
-			for (int j = 0; j < 720 ; j++) {	//#define btnMode 0
-				if (btnMode == 0) {	//ORB ...444					//1 u32 = 1 pixel
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j] =     (u8)((RxBufferPtr_32[j+720*row] >> 24) & 0xF0); // 31 downto 28 bits with 4 bits 0
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 20) & 0x0F0); // 27 downto 24 bits with 4 bits 0
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j + 2] = (u8)((RxBufferPtr_32[j+720*row] >> 16) & 0x00F0); // 23 downto 20 bits with 4 bits 0
-					}
-				else {	// erosion, bypass DMA_TX[7:0], bypass DMA_TX[31:24]	ILA check null RTL
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j]     = (u8)((RxBufferPtr_32[j+720*row] >> 24) & 0xFF); // 31 downto 24
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 24) & 0xFF); // 31 downto 24
-						lwip_buf[2264 * (row% 24) + 4 + 3 * j + 2] = (u8)((RxBufferPtr_32[j+720*row] >> 24) & 0xFF); // 31 downto 24
-					}
-				// if ( (RxBufferPtr_32[j+720*row]>>24) != 0 && row < 183 && page < 1)	// 2ed frame
-				// {
-				// 	xil_printf("x, y pos:  %d , %d \r", j , row);
-				// 	xil_printf("RxBufferPtr_32[&0x0%x] != 0 :  %d \r\n", &RxBufferPtr_32[j+720*row],  RxBufferPtr_32[j+720*row] >> 24);
-				// }	2164~2264 2264+4+2160=4428~4528 4528+2164=6692 
-				//若 RxBufferPtr_32[j] 的低位20bits != 0 ，則串列接在位址...
-				if (((RxBufferPtr_32[j+720*row] << 12) & 0xFFFFF) != 0) {
-					// 提取RxBufferPtr[j*2]的特定位數到lwip_buf[j*5]到lwip_buf[j*5+1]
-					lwip_buf[2264* (row% 24) -100 + j * 5]     = (u8)((RxBufferPtr_32[j+720*row] >> 12) & 0xFF); // 取最低20bits之後的前8bits [20:12
-					lwip_buf[2264* (row% 24) -100 + j * 5 + 1] = (u8)((RxBufferPtr_32[j+720*row] >> 4) & 0xFF); // 取最低20bits之後的中間8bits
+		// 	// 提取Rx4+2160 + BufferPtr[j*2]和RxBufferPtr[j*2+1]的特定位數到lwip_buf[j*5+2]到lwip_buf[j*5+4]
+		// 			lwip_buf[4+2160 * row + j * 5 + 2] = (u8)(((RxBufferPtr_32[j+720*row] << 4) & 0xF0) | ((RxBufferPtr_32[j+720*row + 1] >> 16) & 0x0F)); // RxBufferPtr_32[j*2]取最低20bits之後的最後4bits | (RxBufferPtr_32[j*2+1] & 0xFFFFF)的前4bits
+		// 			lwip_buf[4+2160 * row + j * 5 + 3] = (u8)((RxBufferPtr_32[j+720*row + 1] >> 8) & 0xFF); // 取RxBufferPtr[j*2+1]最低20bits之後的中間8bits
+		// 			lwip_buf[4+2160 * row + j * 5 + 4] = (u8)(RxBufferPtr_32[j+720*row + 1] & 0xFF); // 取RxBufferPtr[j*2+1]最低20bits之後的後8bits
 
-			// 提取Rx2164+ BufferPtr[j*2]和RxBufferPtr[j*2+1]的特定位數到lwip_buf[j*5+2]到lwip_buf[j*5+4]
-					lwip_buf[2264* (row% 24) -100 + j * 5 + 2] = (u8)(((RxBufferPtr_32[j+720*row] << 4) & 0xF0) | ((RxBufferPtr_32[j+720*row + 1] >> 16) & 0x0F)); // RxBufferPtr_32[j*2]取最低20bits之後的最後4bits | (RxBufferPtr_32[j*2+1] & 0xFFFFF)的前4bits
-					lwip_buf[2264* (row% 24) -100 + j * 5 + 3] = (u8)((RxBufferPtr_32[j+720*row + 1] >> 8) & 0xFF); // 取RxBufferPtr[j*2+1]最低20bits之後的中間8bits
-					lwip_buf[2264* (row% 24) -100 + j * 5 + 4] = (u8)(RxBufferPtr_32[j+720*row + 1] & 0xFF); // 取RxBufferPtr[j*2+1]最低20bits之後的後8bits
+		// 			// if((RxBufferPtr_32[j    ] & 0x3FF) != 0)
+		// 			detect_cnt = detect_cnt + 2;
+		// 		}
+		// 	}
+		// 	for (int n = 0; n < 4; n++) {
+		// 		lwip_buf[(row % 24)*2264 + n] = (uint8_t)((row >> 8*n) & 0xFF);          //
+		// 	}
+		// 	Xil_DCacheFlushRange((UINTPTR)lwip_buf, lwip_len);	//(4 + 720*3 + 100)/4);	//*
+		// 	// xil_printf("...Xil_DCacheFlushRlwip_bufange");
 
-					// xil_printf("match != 0 :  %x \r\n", *RxBufferPtr_32[j+720*row]);
+		// 	u32 *lwip_buf_32 = (u32*)BUFFER_BASE;	//*****
+		// // }	//DDR send 2 hos
+		// 	if ((row+1) % 24 == 0 )//&& row > 0)
+		// 	{
+		// 			// xil_printf("Xil_DCacheFlushRange...");
+		// 		//  xil_printf("&lwip_buf[0] 0x %x \r\n\n",&lwip_buf[0]);
 
-					detect_cnt += 2;
-				}
-			}
-			for (int n = 0; n < 4; n++) {
-				lwip_buf[(row % 24)*2264 + n] = (uint8_t)((row >> 8*n) & 0xFF);          //
-			}
-			Xil_DCacheFlushRange((UINTPTR)lwip_buf, lwip_len);	//(4 + 720*3 + 100)/4);	//*
-			// xil_printf("...Xil_DCacheFlushRlwip_bufange");
+		// 		// while (Error==0) {
+		// 		if (Error==0) {
+		// 			if (TcpFastTmrFlag) {
+		// 				tcp_fasttmr();
+		// 				TcpFastTmrFlag = 0;
+		// 				// SendResults = 1;
+		// 				//xil_printf("*");
+		// 			}
+		// 			if (TcpSlowTmrFlag) {
+		// 				tcp_slowtmr();
+		// 				TcpSlowTmrFlag = 0;
+		// 				SendResults = 1;
+		// 			}
+		// 			//xemacif_input(echo_netif);
+		// 			//transfer_data();
+		// 			/* Receive packets */
+		// 			// xil_printf("err echo");
 
-			u32 *lwip_buf_32 = (u32*)BUFFER_BASE;	//lwip_buf_32 = (u32*)BUFFER_BASE;
-		// }	//DDR send 2 hos
-			if ((row+1) % 24 == 0 )//&& page > 30 )  //page > 30 opt latnecy
-			{
-				//  xil_printf("&lwip_buf[0] 0x %x \r\n\n",&lwip_buf[0]);
+		// 			xemacif_input(echo_netif);
+		// 			// xil_printf("echo ...");
 
-				// while (Error==0) {
-				if (Error==0) {
-					if (TcpFastTmrFlag) {
-						tcp_fasttmr();
-						TcpFastTmrFlag = 0;
-						// SendResults = 1;
-						//xil_printf("*");
-					}
-					if (TcpSlowTmrFlag) {
-						tcp_slowtmr();
-						TcpSlowTmrFlag = 0;
-						SendResults = 1;
-					}
-					//xemacif_input(echo_netif);
-					//transfer_data();
-					/* Receive packets */
-					// xil_printf("err echo");
+		// 			/* Send results back from time to time */
+		// 			if (SendResults == 1){
+		// 				SendResults = 0;									//***
+		// 				// memcpy(&lwip_buf[0], &row, 4);
+						
+		// 				psnd->payload = lwip_buf_32;//BUFFER_BASE;	//&lwip_buf_32;
 
-					xemacif_input(echo_netif);
-					// xil_printf("echo ...");
+		// 				udpsenderr = udp_sendto(&send_pcb, psnd, &RemoteAddr, RemotePort);
+		// 				xil_printf(".");
+		// 				if (udpsenderr != ERR_OK){
+		// 					xil_printf("UDP Send failed with Error %d\n\r", udpsenderr);
+		// 					row -= 24;
+		// 				}
+		// 				else
+		// 				{
+		// 					lwip_cnt += 1;
+		// 				}
 
-					/* Send results back from time to time */
-					if (SendResults == 1){
-						SendResults = 0;									//***
-						// memcpy(&lwip_buf[0], &row, 4);
-						psnd = pbuf_alloc(PBUF_TRANSPORT, (lwip_len)*sizeof(u8), PBUF_REF);
+		// 			}
+		// 			else
+		// 			{
+		// 				xil_printf("SendResults Error == 1\n");
+		// 				row -= 24;
+		// 			}
+		// 		}
+		// 		else
+		// 		{
+		// 			xil_printf("Error == 1");
+		// 			row -= 24;
+		// 		}
+		// 		// xil_printf("lwip_buf[1] 0x %x \r\n",lwip_buf[1]);
+		// 		// xil_printf("lwip_buf[2] 0x %x \r\n",lwip_buf[2]);
+		// 		//  xil_printf("lwip_buf[4] 0x %x \r\n", lwip_buf[4]);
 
-						psnd->payload = lwip_buf_32;//BUFFER_BASE;	//&lwip_buf_32;
-
-						udpsenderr = udp_sendto(&send_pcb, psnd, &RemoteAddr, RemotePort);
-						xil_printf(".");
-						if (udpsenderr != ERR_OK){
-							xil_printf("UDP Send failed with Error %d\n\r", udpsenderr);
-							row -= 24;
-						}
-						else
-						{
-							if (lwip_cnt == 0)	//1st pac , Host lost
-								{row -= 24;}
-							lwip_cnt += 1;
-						}
-						pbuf_free(psnd);	//one page done
-
-					}
-					else
-					{
-						xil_printf("SendResults Error == 1\n");
-						row -= 24;
-					}
-				}
-				else
-				{
-					xil_printf("Error == 1");
-					row -= 24;
-				}
-				// xil_printf("lwip_buf[1] 0x %x \r\n",lwip_buf[1]);
-				// xil_printf("lwip_buf[2] 0x %x \r\n",lwip_buf[2]);
-				//  xil_printf("lwip_buf[4] 0x %x \r\n", lwip_buf[4]);
-
-				// xil_printf("row detect_Cnt = %x \r\n",detect_cnt);
-				// detect_cnt = 0;
-			}
-			usleep(20000);	//pac lost per 20 time
-		}
-		xil_printf("page = %d \r\n",page);
-		xil_printf("\n page lwip_cnt = %d \r\n",lwip_cnt);
-		lwip_cnt = 0;
-		xil_printf("page detect_Cnt = %d \r\n",detect_cnt);
-		page+= 1;
+		// 		// xil_printf("row detect_Cnt = %x \r\n",detect_cnt);
+		// 		// detect_cnt = 0;
+		// 	}
+		// 			usleep(200000);	//pac lost per 20 time
+		// }
+			xil_printf("\n page lwip_cnt = %d \r\n",lwip_cnt);
+			lwip_cnt = 0;
+		xil_printf("page detect_Cnt = %x \r\n",detect_cnt);
 		detect_cnt = 0;
+		page+= 1;
 	}
-	xil_printf("tot page = %d \r\n",page);
+	pbuf_free(psnd);	//all page done
+	// xil_printf("tot page = %x \r\n",page);
 
 	/* Test finishes successfully
 	 */
@@ -646,26 +672,4 @@ int SD_Transfer_write(char *FileName,u32 SourceAddress,u32 ByteLength)
         return XST_FAILURE;
     }
     return XST_SUCCESS;
-}
-
-void print_ip(char *msg, struct ip4_addr *ip)
-{
-	print(msg);
-	xil_printf("%d.%d.%d.%d\n\r", ip4_addr1(ip), ip4_addr2(ip),
-			ip4_addr3(ip), ip4_addr4(ip));
-}
-
-void print_ip_settings(struct ip4_addr *ip, struct ip4_addr *mask, struct ip4_addr *gw)
-{
-
-	print_ip("Board IP: ", ip);
-	print_ip("Netmask : ", mask);
-	print_ip("Gateway : ", gw);
-}
-
-/* print_app_header: function to print a header at start time */
-void print_app_header()
-{
-	xil_printf("\n\r\n\r------lwIP UDP GetCentroid Application------\n\r");
-	xil_printf("UDP packets sent to port 7 will be processed\n\r");
 }

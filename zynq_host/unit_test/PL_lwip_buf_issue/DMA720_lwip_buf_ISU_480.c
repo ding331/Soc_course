@@ -53,6 +53,7 @@ DEFAULT SET TO 0x01000000
 
 #define NUMBER_OF_TRANSFERS	10
 #define POLL_TIMEOUT_COUNTER    1000000U
+#define btnMode 0   //PL switch
 
 /************************** Function Prototypes ******************************/
 #if (!defined(DEBUG))
@@ -81,7 +82,7 @@ UINT file_pointer = 0; // Keep track of the file pointer
 // Function prototypes
 u32 SD_Transfer_read(char *FileName, u32 DestinationAddress, UINT ByteLength);
 
-char value[691200];//2*imageSize]; // Adjust the size to match the desired read length
+unsigned char value[691200];//2*imageSize]; // Adjust the size to match the desired read length
 
 static int row = 0;
 static u32 page = 0;
@@ -278,11 +279,16 @@ int XAxiDma_SimplePollExample(UINTPTR BaseAddress)
             RxBufferPtr_32 = RX_BUFFER_BASE + (u32)(720*(row));   //
                 // Assuming RxBufferPtr is a pointer to an array of u32
                 for (int j = 0; j < 720; j++) {
-                    // for (int i = 0; i < 3; i++) {
-                        lwip_buf[ 4+ 3*j ] =     (RxBufferPtr_32[j] >> 28) & 0xF;
-                        lwip_buf[ 4+ 3*j + 1] =  (RxBufferPtr_32[j] >> 24) & 0xF;
-                        lwip_buf[ 4+ 3*j + 2] =  (RxBufferPtr_32[j] >> 20 )& 0xF;
-                    // }
+					if (btnMode == 0) {	//ORB ...444
+						lwip_buf[2264 * row + 4 + 3 * j] =     (u8)((RxBufferPtr_32[j] >> 24) & 0xF0); // 31 downto 28 bits with 4 bits 0
+						lwip_buf[2264 * row + 4 + 3 * j + 1] = (u8)((RxBufferPtr_32[j] >> 20) & 0x0F0); // 27 downto 24 bits with 4 bits 0
+						lwip_buf[2264 * row + 4 + 3 * j + 2] = (u8)((RxBufferPtr_32[j] >> 16) & 0x00F0); // 23 downto 20 bits with 4 bits 0
+					}else
+					{	//sobel, erosion, vid minus 8bits 
+						lwip_buf[2264 * row + 4 +  3 * j] =     (u8)((RxBufferPtr_32[j] >> 24)); // 31 downto 28 bits with 4 bits 0
+						lwip_buf[2264 * row + 4 +  3 * j + 1] =     (u8)((RxBufferPtr_32[j] >> 24)); // 31 downto 28 bits with 4 bits 0
+						lwip_buf[2264 * row + 4 +  3 * j + 2] =     (u8)((RxBufferPtr_32[j] >> 24)); // 31 downto 28 bits with 4 bits 0
+					}
                     //若 RxBufferPtr_32[j] 的低位20bits != 0 ，則串列接在位址...
                     if ((RxBufferPtr_32[j] << 12 & 0xFFFFF) != 0) {
                         // 提取RxBufferPtr[j*2]的特定位數到lwip_buf[j*5]到lwip_buf[j*5+1]
